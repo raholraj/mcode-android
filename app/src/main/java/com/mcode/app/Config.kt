@@ -5,43 +5,54 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 
-data class LlmConfig(
+data class Config(
     val baseUrl: String = "https://api.groq.com/openai/v1",
     val apiKey: String = "",
     val model: String = "llama-3.3-70b-versatile",
-    val systemPrompt: String = DEFAULT_SYSTEM,
+    val workdir: String = "/data/data/com.termux/files/home",
+    val autoApprove: Boolean = false,
 )
 
-const val DEFAULT_SYSTEM = """You are mcode, an AI coding agent on Android. You can run shell commands via Termux and read/write files.
-Be concise. Prefer small, focused changes. When you need to run a command or touch files, use the tools.
-"""
+object Presets {
+    val list = listOf(
+        Triple("Groq (free)", "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"),
+        Triple("Gemini (free)", "https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.0-flash"),
+        Triple("OpenRouter", "https://openrouter.ai/api/v1", "openai/gpt-4o-mini"),
+        Triple("OpenAI", "https://api.openai.com/v1", "gpt-4o-mini"),
+        Triple("Ollama (local)", "http://localhost:11434/v1", "qwen2.5-coder"),
+    )
+}
 
 class ConfigStore(context: Context) {
-    private val masterKey = MasterKey.Builder(context)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .build()
+    private val prefs: SharedPreferences = try {
+        val key = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
+        EncryptedSharedPreferences.create(
+            context, "mcode_secure", key,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+        )
+    } catch (e: Exception) {
+        context.getSharedPreferences("mcode_plain", Context.MODE_PRIVATE)
+    }
 
-    private val prefs: SharedPreferences = EncryptedSharedPreferences.create(
-        context,
-        "mcode_secure",
-        masterKey,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-    )
+    fun load(): Config {
+        val d = Config()
+        return Config(
+            baseUrl = prefs.getString("baseUrl", d.baseUrl) ?: d.baseUrl,
+            apiKey = prefs.getString("apiKey", d.apiKey) ?: d.apiKey,
+            model = prefs.getString("model", d.model) ?: d.model,
+            workdir = prefs.getString("workdir", d.workdir) ?: d.workdir,
+            autoApprove = prefs.getBoolean("autoApprove", d.autoApprove),
+        )
+    }
 
-    fun load(): LlmConfig = LlmConfig(
-        baseUrl = prefs.getString("baseUrl", LlmConfig().baseUrl) ?: LlmConfig().baseUrl,
-        apiKey = prefs.getString("apiKey", "") ?: "",
-        model = prefs.getString("model", LlmConfig().model) ?: LlmConfig().model,
-        systemPrompt = prefs.getString("systemPrompt", DEFAULT_SYSTEM) ?: DEFAULT_SYSTEM,
-    )
-
-    fun save(cfg: LlmConfig) {
+    fun save(c: Config) {
         prefs.edit()
-            .putString("baseUrl", cfg.baseUrl)
-            .putString("apiKey", cfg.apiKey)
-            .putString("model", cfg.model)
-            .putString("systemPrompt", cfg.systemPrompt)
+            .putString("baseUrl", c.baseUrl)
+            .putString("apiKey", c.apiKey)
+            .putString("model", c.model)
+            .putString("workdir", c.workdir)
+            .putBoolean("autoApprove", c.autoApprove)
             .apply()
     }
 }
